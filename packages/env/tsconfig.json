@@ -1,0 +1,3 @@
+{
+  "extends": "@solved-problems/config/tsconfig.base.json"
+}

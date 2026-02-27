@@ -1,0 +1,91 @@
+enum ResourceType {
+  SOLVED_PROBLEM
+  GROUP
+}
+
+enum Permission {
+  READ
+  WRITE
+}
+
+enum DraftStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model Share {
+  id               String       @id @default(cuid())
+  resourceType     ResourceType
+  resourceId       String
+  sharedWithUserId String
+  sharedWithUser   User         @relation("sharedWithMe", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  permission       Permission
+  sharedByUserId   String
+  sharedByUser     User         @relation("sharedByMe", fields: [sharedByUserId], references: [id], onDelete: Cascade)
+  createdAt        DateTime     @default(now())
+
+  @@index([sharedWithUserId])
+  @@index([sharedByUserId])
+  @@index([resourceType, resourceId])
+  @@map("share")
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  name      String
+  hashedKey String    @unique
+  userId    String
+  user      User      @relation("apiKeys", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  accesses ApiKeyAccess[]
+  drafts   Draft[]
+
+  @@index([userId])
+  @@map("api_key")
+}
+
+model ApiKeyAccess {
+  id           String       @id @default(cuid())
+  apiKeyId     String
+  apiKey       ApiKey       @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  resourceType ResourceType
+  resourceId   String
+
+  @@index([apiKeyId])
+  @@index([resourceType, resourceId])
+  @@map("api_key_access")
+}
+
+model Draft {
+  id               String      @id @default(cuid())
+  solvedProblemId  String?
+  solvedProblem    SolvedProblem? @relation(fields: [solvedProblemId], references: [id], onDelete: SetNull)
+  proposedData     Json
+  status           DraftStatus @default(PENDING)
+  createdByUserId  String
+  createdByUser    User        @relation("drafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  apiKeyId         String?
+  apiKey           ApiKey?     @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  createdAt        DateTime    @default(now())
+  reviewedAt       DateTime?
+
+  @@index([createdByUserId])
+  @@index([solvedProblemId])
+  @@index([status])
+  @@map("draft")
+}
+
+model SiteSettings {
+  id             String  @id @default("default")
+  signupEnabled  Boolean @default(true)
+
+  @@map("site_settings")
+}

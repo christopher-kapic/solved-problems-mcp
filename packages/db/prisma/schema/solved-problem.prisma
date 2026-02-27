@@ -1,0 +1,96 @@
+enum DependencyType {
+  SERVER
+  CLIENT
+}
+
+model SolvedProblem {
+  id          String   @id
+  name        String
+  description String
+  appType     String
+  ownerId     String
+  owner       User     @relation("ownedSolvedProblems", fields: [ownerId], references: [id], onDelete: Cascade)
+  copiedFromId String?
+  copiedFrom   SolvedProblem?  @relation("copies", fields: [copiedFromId], references: [id], onDelete: SetNull)
+  copies       SolvedProblem[] @relation("copies")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions     SolvedProblemVersion[]
+  tags         SolvedProblemTag[]
+  dependencies Dependency[]
+  groupMemberships GroupMembership[]
+  drafts       Draft[]
+
+  @@index([ownerId])
+  @@map("solved_problem")
+}
+
+model SolvedProblemVersion {
+  id              String   @id @default(cuid())
+  solvedProblemId String
+  solvedProblem   SolvedProblem @relation(fields: [solvedProblemId], references: [id], onDelete: Cascade)
+  version         Int
+  details         String
+  createdAt       DateTime @default(now())
+
+  @@unique([solvedProblemId, version])
+  @@index([solvedProblemId])
+  @@map("solved_problem_version")
+}
+
+model Tag {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  solvedProblems  SolvedProblemTag[]
+
+  @@map("tag")
+}
+
+model SolvedProblemTag {
+  solvedProblemId String
+  solvedProblem   SolvedProblem @relation(fields: [solvedProblemId], references: [id], onDelete: Cascade)
+  tagId           String
+  tag             Tag           @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([solvedProblemId, tagId])
+  @@index([tagId])
+  @@map("solved_problem_tag")
+}
+
+model Dependency {
+  id              String         @id @default(cuid())
+  name            String
+  version         String
+  packageManager  String
+  type            DependencyType
+  solvedProblemId String
+  solvedProblem   SolvedProblem  @relation(fields: [solvedProblemId], references: [id], onDelete: Cascade)
+
+  @@index([solvedProblemId])
+  @@index([type])
+  @@map("dependency")
+}
+
+model SolvedProblemGroup {
+  id      String   @id @default(cuid())
+  name    String
+  ownerId String
+  owner   User     @relation("ownedGroups", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  memberships GroupMembership[]
+
+  @@index([ownerId])
+  @@map("solved_problem_group")
+}
+
+model GroupMembership {
+  groupId         String
+  group           SolvedProblemGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  solvedProblemId String
+  solvedProblem   SolvedProblem      @relation(fields: [solvedProblemId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, solvedProblemId])
+  @@index([solvedProblemId])
+  @@map("group_membership")
+}
