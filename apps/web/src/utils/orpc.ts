@@ -20,8 +20,12 @@ export const queryClient = new QueryClient({
   }),
 });
 
+const baseURL =
+  env.NEXT_PUBLIC_SERVER_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "");
+
 export const link = new RPCLink({
-  url: `${env.NEXT_PUBLIC_SERVER_URL}/rpc`,
+  url: `${baseURL}/rpc`,
   fetch(url, options) {
     return fetch(url, {
       ...options,
