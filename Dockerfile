@@ -26,7 +26,10 @@ COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/env/node_modules ./packages/env/node_modules
 COPY . .
 
-# Generate Prisma client
+# Skip env validation during build — DATABASE_URL and other secrets are provided at runtime
+ENV SKIP_ENV_VALIDATION=true
+
+# Generate Prisma client (no DATABASE_URL needed — schema uses driver adapter)
 RUN pnpm --filter @solved-problems/db db:generate
 
 # Build server
