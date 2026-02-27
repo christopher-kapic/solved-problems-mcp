@@ -6,9 +6,6 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/solved_problems
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-change-me-to-a-secure-secret-at-least-32-chars}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
-      NEXT_PUBLIC_SERVER_URL: ${NEXT_PUBLIC_SERVER_URL:-}
       APPLY_SCHEMA: ${APPLY_SCHEMA:-true}
       NODE_ENV: production
     depends_on:

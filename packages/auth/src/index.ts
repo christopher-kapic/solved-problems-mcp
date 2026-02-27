@@ -9,7 +9,7 @@ export const auth = betterAuth({
     provider: "postgresql",
   }),
 
-  trustedOrigins: [env.CORS_ORIGIN],
+  trustedOrigins: env.CORS_ORIGIN ? [env.CORS_ORIGIN] : [],
   emailAndPassword: {
     enabled: true,
   },
