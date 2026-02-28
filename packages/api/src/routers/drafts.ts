@@ -30,6 +30,177 @@ const proposedDataSchema = z.object({
   details: z.string().optional(),
 });
 
+async function approveDraft(draftId: string, userId: string) {
+  const draft = await prisma.draft.findUnique({
+    where: { id: draftId },
+    include: {
+      solvedProblem: {
+        include: {
+          versions: {
+            orderBy: { version: "desc" as const },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!draft) {
+    throw new ORPCError("NOT_FOUND", { message: "Draft not found" });
+  }
+
+  if (draft.status !== "PENDING") {
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Draft is not pending",
+    });
+  }
+
+  const isOwnerOfProblem =
+    draft.solvedProblem && draft.solvedProblem.ownerId === userId;
+  const isCreator =
+    draft.solvedProblemId === null && draft.createdByUserId === userId;
+
+  if (!isOwnerOfProblem && !isCreator) {
+    throw new ORPCError("FORBIDDEN", {
+      message: "Only the resource owner can approve drafts",
+    });
+  }
+
+  const data = proposedDataSchema.parse(draft.proposedData);
+
+  if (draft.solvedProblemId && draft.solvedProblem) {
+    const latestVersion = draft.solvedProblem.versions[0];
+
+    if (
+      data.details !== undefined &&
+      data.details !== (latestVersion?.details ?? "")
+    ) {
+      const nextVersion = (latestVersion?.version ?? 0) + 1;
+      await prisma.solvedProblemVersion.create({
+        data: {
+          solvedProblemId: draft.solvedProblemId,
+          version: nextVersion,
+          details: data.details,
+        },
+      });
+    }
+
+    if (data.tags !== undefined) {
+      await prisma.solvedProblemTag.deleteMany({
+        where: { solvedProblemId: draft.solvedProblemId },
+      });
+      if (data.tags.length > 0) {
+        const tagRecords = await Promise.all(
+          data.tags.map((name) =>
+            prisma.tag.upsert({
+              where: { name },
+              create: { name },
+              update: {},
+            })
+          )
+        );
+        await prisma.solvedProblemTag.createMany({
+          data: tagRecords.map((tag) => ({
+            solvedProblemId: draft.solvedProblemId!,
+            tagId: tag.id,
+          })),
+        });
+      }
+    }
+
+    if (data.dependencies !== undefined) {
+      await prisma.dependency.deleteMany({
+        where: { solvedProblemId: draft.solvedProblemId },
+      });
+      if (data.dependencies.length > 0) {
+        await prisma.dependency.createMany({
+          data: data.dependencies.map((dep) => ({
+            name: dep.name,
+            version: dep.version,
+            packageManager: dep.packageManager,
+            type: dep.type,
+            solvedProblemId: draft.solvedProblemId!,
+          })),
+        });
+      }
+    }
+
+    await prisma.solvedProblem.update({
+      where: { id: draft.solvedProblemId },
+      data: {
+        name: data.name,
+        description: data.description,
+        appType: data.appType,
+      },
+    });
+  } else {
+    let id = slugify(data.name);
+    const existing = await prisma.solvedProblem.findUnique({
+      where: { id },
+    });
+    if (existing) {
+      id = `${id}-${Date.now()}`;
+    }
+
+    const tagRecords = data.tags?.length
+      ? await Promise.all(
+          data.tags.map((name) =>
+            prisma.tag.upsert({
+              where: { name },
+              create: { name },
+              update: {},
+            })
+          )
+        )
+      : [];
+
+    await prisma.solvedProblem.create({
+      data: {
+        id,
+        name: data.name,
+        description: data.description,
+        appType: data.appType,
+        ownerId: userId,
+        versions: data.details
+          ? {
+              create: {
+                version: 1,
+                details: data.details,
+              },
+            }
+          : undefined,
+        tags: tagRecords.length
+          ? {
+              create: tagRecords.map((tag) => ({
+                tagId: tag.id,
+              })),
+            }
+          : undefined,
+        dependencies: data.dependencies?.length
+          ? {
+              create: data.dependencies.map((dep) => ({
+                name: dep.name,
+                version: dep.version,
+                packageManager: dep.packageManager,
+                type: dep.type,
+              })),
+            }
+          : undefined,
+      },
+    });
+  }
+
+  const updated = await prisma.draft.update({
+    where: { id: draftId },
+    data: {
+      status: "APPROVED",
+      reviewedAt: new Date(),
+    },
+  });
+
+  return updated;
+}
+
 export const draftsRouter = {
   list: protectedProcedure.handler(async ({ context }) => {
     const userId = context.session.user.id;
@@ -114,184 +285,19 @@ export const draftsRouter = {
   approve: protectedProcedure
     .input(z.object({ id: z.string().min(1) }))
     .handler(async ({ input, context }) => {
+      return approveDraft(input.id, context.session.user.id);
+    }),
+
+  approveMany: protectedProcedure
+    .input(z.object({ ids: z.array(z.string().min(1)).min(1) }))
+    .handler(async ({ input, context }) => {
       const userId = context.session.user.id;
-
-      const draft = await prisma.draft.findUnique({
-        where: { id: input.id },
-        include: {
-          solvedProblem: {
-            include: {
-              versions: {
-                orderBy: { version: "desc" },
-                take: 1,
-              },
-            },
-          },
-        },
-      });
-
-      if (!draft) {
-        throw new ORPCError("NOT_FOUND", { message: "Draft not found" });
+      let approved = 0;
+      for (const id of input.ids) {
+        await approveDraft(id, userId);
+        approved++;
       }
-
-      if (draft.status !== "PENDING") {
-        throw new ORPCError("BAD_REQUEST", {
-          message: "Draft is not pending",
-        });
-      }
-
-      // Only the solved problem owner can approve (or the creator for new proposals)
-      const isOwnerOfProblem =
-        draft.solvedProblem && draft.solvedProblem.ownerId === userId;
-      const isCreator =
-        draft.solvedProblemId === null && draft.createdByUserId === userId;
-
-      if (!isOwnerOfProblem && !isCreator) {
-        throw new ORPCError("FORBIDDEN", {
-          message: "Only the resource owner can approve drafts",
-        });
-      }
-
-      const data = proposedDataSchema.parse(draft.proposedData);
-
-      if (draft.solvedProblemId && draft.solvedProblem) {
-        // Update existing solved problem
-        const latestVersion = draft.solvedProblem.versions[0];
-
-        // Create new version if details changed
-        if (
-          data.details !== undefined &&
-          data.details !== (latestVersion?.details ?? "")
-        ) {
-          const nextVersion = (latestVersion?.version ?? 0) + 1;
-          await prisma.solvedProblemVersion.create({
-            data: {
-              solvedProblemId: draft.solvedProblemId,
-              version: nextVersion,
-              details: data.details,
-            },
-          });
-        }
-
-        // Update tags if provided
-        if (data.tags !== undefined) {
-          await prisma.solvedProblemTag.deleteMany({
-            where: { solvedProblemId: draft.solvedProblemId },
-          });
-          if (data.tags.length > 0) {
-            const tagRecords = await Promise.all(
-              data.tags.map((name) =>
-                prisma.tag.upsert({
-                  where: { name },
-                  create: { name },
-                  update: {},
-                })
-              )
-            );
-            await prisma.solvedProblemTag.createMany({
-              data: tagRecords.map((tag) => ({
-                solvedProblemId: draft.solvedProblemId!,
-                tagId: tag.id,
-              })),
-            });
-          }
-        }
-
-        // Update dependencies if provided
-        if (data.dependencies !== undefined) {
-          await prisma.dependency.deleteMany({
-            where: { solvedProblemId: draft.solvedProblemId },
-          });
-          if (data.dependencies.length > 0) {
-            await prisma.dependency.createMany({
-              data: data.dependencies.map((dep) => ({
-                name: dep.name,
-                version: dep.version,
-                packageManager: dep.packageManager,
-                type: dep.type,
-                solvedProblemId: draft.solvedProblemId!,
-              })),
-            });
-          }
-        }
-
-        // Update core fields
-        await prisma.solvedProblem.update({
-          where: { id: draft.solvedProblemId },
-          data: {
-            name: data.name,
-            description: data.description,
-            appType: data.appType,
-          },
-        });
-      } else {
-        // Create new solved problem
-        let id = slugify(data.name);
-        const existing = await prisma.solvedProblem.findUnique({
-          where: { id },
-        });
-        if (existing) {
-          id = `${id}-${Date.now()}`;
-        }
-
-        const tagRecords = data.tags?.length
-          ? await Promise.all(
-              data.tags.map((name) =>
-                prisma.tag.upsert({
-                  where: { name },
-                  create: { name },
-                  update: {},
-                })
-              )
-            )
-          : [];
-
-        await prisma.solvedProblem.create({
-          data: {
-            id,
-            name: data.name,
-            description: data.description,
-            appType: data.appType,
-            ownerId: userId,
-            versions: data.details
-              ? {
-                  create: {
-                    version: 1,
-                    details: data.details,
-                  },
-                }
-              : undefined,
-            tags: tagRecords.length
-              ? {
-                  create: tagRecords.map((tag) => ({
-                    tagId: tag.id,
-                  })),
-                }
-              : undefined,
-            dependencies: data.dependencies?.length
-              ? {
-                  create: data.dependencies.map((dep) => ({
-                    name: dep.name,
-                    version: dep.version,
-                    packageManager: dep.packageManager,
-                    type: dep.type,
-                  })),
-                }
-              : undefined,
-          },
-        });
-      }
-
-      // Mark draft as approved
-      const updated = await prisma.draft.update({
-        where: { id: input.id },
-        data: {
-          status: "APPROVED",
-          reviewedAt: new Date(),
-        },
-      });
-
-      return updated;
+      return { approved };
     }),
 
   reject: protectedProcedure
