@@ -22,13 +22,17 @@ export const auth = betterAuth({
       },
     },
   },
-  advanced: {
-    defaultCookieAttributes: {
-      sameSite: "none",
-      secure: true,
-      httpOnly: true,
-    },
-  },
+  ...(env.CORS_ORIGIN
+    ? {
+        advanced: {
+          defaultCookieAttributes: {
+            sameSite: "none" as const,
+            secure: true,
+            httpOnly: true,
+          },
+        },
+      }
+    : {}),
   databaseHooks: {
     user: {
       create: {
