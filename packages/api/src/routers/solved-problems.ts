@@ -23,7 +23,7 @@ const dependencySchema = z.object({
  * Build accessible where clause by resolving share IDs first,
  * so we can use them in Prisma queries properly.
  */
-async function buildAccessibleWhere(userId: string) {
+export async function buildAccessibleWhere(userId: string) {
   const [directShares, groupShares] = await Promise.all([
     prisma.share.findMany({
       where: {
@@ -64,6 +64,13 @@ async function buildAccessibleWhere(userId: string) {
 }
 
 export const solvedProblemsRouter = {
+  exportEnabled: protectedProcedure.handler(async () => {
+    const settings = await prisma.siteSettings.findUnique({
+      where: { id: "default" },
+    });
+    return { exportEnabled: settings?.exportEnabled ?? true };
+  }),
+
   list: protectedProcedure
     .input(
       z.object({

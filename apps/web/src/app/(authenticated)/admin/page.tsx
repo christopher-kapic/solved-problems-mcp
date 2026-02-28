@@ -161,6 +161,44 @@ export default function AdminPage() {
           ) : null}
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Data Export</CardTitle>
+          <CardDescription>
+            Control whether users can export solved problems as zip files.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {settingsQuery.isLoading ? (
+            <Skeleton className="h-8 w-48" />
+          ) : settingsQuery.data ? (
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={settingsQuery.data.exportEnabled}
+                  onChange={(e) =>
+                    updateMutation.mutate({
+                      exportEnabled: e.target.checked,
+                    })
+                  }
+                  disabled={updateMutation.isPending}
+                  className="peer sr-only"
+                />
+                <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2" />
+              </label>
+              <span className="text-sm">
+                {settingsQuery.data.exportEnabled
+                  ? "Export is enabled"
+                  : "Export is disabled"}
+              </span>
+              {updateMutation.isPending && (
+                <span className="text-xs text-muted-foreground">Saving...</span>
+              )}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
     </div>
   );
 }

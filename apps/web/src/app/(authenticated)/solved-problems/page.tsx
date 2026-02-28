@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { orpc } from "@/utils/orpc";
+import { env } from "@solved-problems/env/web";
 import {
   Card,
   CardContent,
@@ -11,15 +13,63 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const baseURL =
+  env.NEXT_PUBLIC_SERVER_URL ||
+  (typeof window !== "undefined" ? window.location.origin : "");
 
 export default function SolvedProblemsPage() {
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [appType, setAppType] = useState("");
   const [depSearch, setDepSearch] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+
+  const exportEnabledQuery = useQuery(
+    orpc.solvedProblems.exportEnabled.queryOptions({})
+  );
+  const exportEnabled = exportEnabledQuery.data?.exportEnabled ?? false;
+
+  async function handleImport(file: File) {
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${baseURL}/api/import`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Import failed");
+      }
+      const result = await res.json();
+      const parts: string[] = [];
+      if (result.created.length) parts.push(`${result.created.length} created`);
+      if (result.drafted.length) parts.push(`${result.drafted.length} drafted`);
+      if (result.errors.length) parts.push(`${result.errors.length} errors`);
+      toast.success(`Import complete: ${parts.join(", ")}`);
+      if (result.errors.length) {
+        for (const err of result.errors) {
+          toast.error(err);
+        }
+      }
+      queryClient.invalidateQueries({
+        queryKey: orpc.solvedProblems.list.queryOptions({ input: {} }).queryKey,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   const tags = tagFilter
     .split(",")
@@ -51,9 +101,38 @@ export default function SolvedProblemsPage() {
             Browse and filter your solved problems.
           </p>
         </div>
-        <Link href="/solved-problems/new" className={buttonVariants()}>
-          New Solved Problem
-        </Link>
+        <div className="flex items-center gap-2">
+          {exportEnabled && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.href = `${baseURL}/api/export`;
+              }}
+            >
+              Export All
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {importing ? "Importing..." : "Import"}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.zip"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImport(file);
+            }}
+          />
+          <Link href="/solved-problems/new" className={buttonVariants()}>
+            New Solved Problem
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}

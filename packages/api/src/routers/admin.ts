@@ -9,7 +9,7 @@ export const adminRouter = {
   getSettings: adminProcedure.handler(async () => {
     const settings = await prisma.siteSettings.upsert({
       where: { id: "default" },
-      create: { id: "default", signupEnabled: true },
+      create: { id: "default", signupEnabled: true, exportEnabled: true },
       update: {},
     });
     return settings;
@@ -19,6 +19,7 @@ export const adminRouter = {
     .input(
       z.object({
         signupEnabled: z.boolean().optional(),
+        exportEnabled: z.boolean().optional(),
       })
     )
     .handler(async ({ input }) => {
@@ -27,10 +28,14 @@ export const adminRouter = {
         create: {
           id: "default",
           signupEnabled: input.signupEnabled ?? true,
+          exportEnabled: input.exportEnabled ?? true,
         },
         update: {
           ...(input.signupEnabled !== undefined && {
             signupEnabled: input.signupEnabled,
+          }),
+          ...(input.exportEnabled !== undefined && {
+            exportEnabled: input.exportEnabled,
           }),
         },
       });

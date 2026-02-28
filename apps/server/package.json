@@ -23,6 +23,7 @@
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "hono": "catalog:",
+    "jszip": "^3.10.1",
     "next": "^16.1.1",
     "zod": "catalog:"
   },

@@ -86,6 +86,7 @@ model Draft {
 model SiteSettings {
   id             String  @id @default("default")
   signupEnabled  Boolean @default(true)
+  exportEnabled  Boolean @default(true)
 
   @@map("site_settings")
 }
