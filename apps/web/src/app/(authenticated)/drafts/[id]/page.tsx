@@ -13,6 +13,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useState } from "react";
+import ReactDiffViewer from "react-diff-viewer-continued";
 
 interface ProposedData {
   name?: string;
@@ -41,6 +42,9 @@ export default function DraftDetailPage() {
   );
   const draft = query.data;
   const proposed = draft?.proposedData as ProposedData | undefined;
+  const isUpdate = !!draft?.solvedProblemId;
+
+  const [showDiff, setShowDiff] = useState(isUpdate);
 
   const approveMutation = useMutation({
     ...orpc.drafts.approve.mutationOptions(),
@@ -116,7 +120,6 @@ export default function DraftDetailPage() {
   const existingTags =
     existing?.tags?.map((t) => t.tag.name).sort() ?? [];
   const existingDeps = existing?.dependencies ?? [];
-  const isUpdate = !!draft.solvedProblemId;
 
   return (
     <div className="space-y-6">
@@ -134,8 +137,8 @@ export default function DraftDetailPage() {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-3">
+      {/* Action Buttons and View Toggle */}
+      <div className="flex flex-wrap items-center gap-3">
         {confirmAction === "approve" ? (
           <div className="flex items-center gap-2">
             <span className="text-sm">Approve and apply this draft?</span>
@@ -203,12 +206,38 @@ export default function DraftDetailPage() {
             >
               Copy to Own
             </Button>
+            {isUpdate && (
+              <Button
+                variant={showDiff ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setShowDiff(!showDiff)}
+              >
+                {showDiff ? "View Fields" : "View Diff"}
+              </Button>
+            )}
           </>
         )}
       </div>
 
       {/* Proposed Data */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {isUpdate && showDiff ? (
+        <Card className="col-span-2">
+          <CardHeader>
+            <CardTitle className="text-sm">Changes in Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-[500px] overflow-auto rounded-md border">
+              <ReactDiffViewer
+                oldValue={existingVersion?.details ?? ""}
+                newValue={proposed?.details ?? ""}
+                splitView={true}
+                hideLineNumbers={false}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+      <div className={`grid gap-6 ${isUpdate ? "lg:grid-cols-2" : ""}`}>
         {/* Proposed */}
         <Card>
           <CardHeader>
@@ -343,6 +372,7 @@ export default function DraftDetailPage() {
           </Card>
         )}
       </div>
+      )}
     </div>
   );
 }
