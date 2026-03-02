@@ -219,6 +219,67 @@ export const groupsRouter = {
       return { success: true };
     }),
 
+  addSolvedProblems: protectedProcedure
+    .input(
+      z.object({
+        groupId: z.string().min(1),
+        solvedProblemIds: z.array(z.string().min(1)).min(1),
+      })
+    )
+    .handler(async ({ input, context }) => {
+      const userId = context.session.user.id;
+
+      const group = await prisma.solvedProblemGroup.findUnique({
+        where: { id: input.groupId },
+      });
+
+      if (!group) {
+        throw new ORPCError("NOT_FOUND", {
+          message: "Group not found",
+        });
+      }
+
+      if (group.ownerId !== userId) {
+        throw new ORPCError("FORBIDDEN", {
+          message: "Only the owner can add solved problems to a group",
+        });
+      }
+
+      // Verify all solved problems exist
+      const solvedProblems = await prisma.solvedProblem.findMany({
+        where: { id: { in: input.solvedProblemIds } },
+        select: { id: true },
+      });
+
+      if (solvedProblems.length !== input.solvedProblemIds.length) {
+        throw new ORPCError("NOT_FOUND", {
+          message: "One or more solved problems not found",
+        });
+      }
+
+      // Skip any that already exist
+      const existing = await prisma.groupMembership.findMany({
+        where: {
+          groupId: input.groupId,
+          solvedProblemId: { in: input.solvedProblemIds },
+        },
+        select: { solvedProblemId: true },
+      });
+      const existingIds = new Set(existing.map((e) => e.solvedProblemId));
+      const newIds = input.solvedProblemIds.filter((id) => !existingIds.has(id));
+
+      if (newIds.length > 0) {
+        await prisma.groupMembership.createMany({
+          data: newIds.map((solvedProblemId) => ({
+            groupId: input.groupId,
+            solvedProblemId,
+          })),
+        });
+      }
+
+      return { success: true, added: newIds.length };
+    }),
+
   removeSolvedProblem: protectedProcedure
     .input(
       z.object({

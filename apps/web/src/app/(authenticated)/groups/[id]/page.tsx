@@ -25,6 +25,7 @@ export default function GroupDetailPage() {
   const { data: session } = authClient.useSession();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const query = useQuery(
     orpc.groups.get.queryOptions({ input: { id: params.id } })
@@ -47,10 +48,11 @@ export default function GroupDetailPage() {
   });
 
   const addMutation = useMutation({
-    ...orpc.groups.addSolvedProblem.mutationOptions(),
-    onSuccess: () => {
-      toast.success("Solved problem added to group");
+    ...orpc.groups.addSolvedProblems.mutationOptions(),
+    onSuccess: (_data) => {
+      toast.success("Solved problems added to group");
       queryClient.invalidateQueries();
+      setSelectedIds(new Set());
       setSearchTerm("");
     },
     onError: (error) => {
@@ -215,51 +217,74 @@ export default function GroupDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Add Solved Problem (owner only) */}
+      {/* Add Solved Problems (owner only) */}
       {isOwner && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Add Solved Problem</CardTitle>
+            <CardTitle className="text-sm">Add Solved Problems</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <Input
-              placeholder="Search solved problems by name..."
+              placeholder="Filter solved problems by name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            {searchTerm && (
-              <div className="max-h-48 space-y-1 overflow-y-auto">
-                {availableProblems.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No matching solved problems found.
-                  </p>
-                ) : (
-                  availableProblems.slice(0, 10).map((sp) => (
-                    <button
-                      key={sp.id}
-                      type="button"
-                      className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50"
-                      onClick={() =>
-                        addMutation.mutate({
-                          groupId: group.id,
-                          solvedProblemId: sp.id,
-                        })
-                      }
-                      disabled={addMutation.isPending}
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium">{sp.name}</p>
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+              {availableProblems.length === 0 ? (
+                <p className="py-2 text-center text-xs text-muted-foreground">
+                  {(solvedProblemsQuery.data ?? []).filter((sp) => !memberIds.has(sp.id)).length === 0
+                    ? "All solved problems are already in this group."
+                    : "No matches found."}
+                </p>
+              ) : (
+                availableProblems.map((sp) => (
+                  <label
+                    key={sp.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(sp.id)}
+                      onChange={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(sp.id)) {
+                            next.delete(sp.id);
+                          } else {
+                            next.add(sp.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium">{sp.name}</p>
+                      {sp.description && (
                         <p className="truncate text-xs text-muted-foreground">
                           {sp.description}
                         </p>
-                      </div>
-                      <span className="ml-2 shrink-0 text-xs text-primary">
-                        + Add
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
+                      )}
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={() =>
+                  addMutation.mutate({
+                    groupId: group.id,
+                    solvedProblemIds: Array.from(selectedIds),
+                  })
+                }
+                disabled={addMutation.isPending}
+                size="sm"
+              >
+                {addMutation.isPending
+                  ? "Adding..."
+                  : `Add ${selectedIds.size} selected`}
+              </Button>
             )}
           </CardContent>
         </Card>
