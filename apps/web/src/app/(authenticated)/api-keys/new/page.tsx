@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ResourceSelector, type AccessScope } from "@/components/resource-selector";
+import { Checkbox } from "@/components/ui/checkbox";
+import { authClient } from "@/lib/auth-client";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -73,6 +75,10 @@ function KeyDisplay({
 
 export default function NewApiKeyPage() {
   const router = useRouter();
+  const { data: session } = authClient.useSession();
+  const isAdmin =
+    (session?.user as { role?: string } | undefined)?.role === "ADMIN";
+  const [everything, setEverything] = useState(false);
   const [accesses, setAccesses] = useState<AccessScope[]>([]);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
@@ -96,7 +102,11 @@ export default function NewApiKeyPage() {
   });
 
   const onSubmit = (values: FormValues) => {
-    mutation.mutate({ name: values.name, accesses });
+    mutation.mutate({
+      name: values.name,
+      accesses: everything ? [] : accesses,
+      everything,
+    });
   };
 
   if (createdKey) {
@@ -146,8 +156,27 @@ export default function NewApiKeyPage() {
               Choose which solved problems and groups this key can access.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <ResourceSelector accesses={accesses} onChange={setAccesses} />
+          <CardContent className="space-y-4">
+            {isAdmin && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={everything}
+                  onCheckedChange={(checked) => setEverything(checked === true)}
+                />
+                <span className="text-sm font-medium">
+                  Grant access to all solved problems
+                </span>
+              </label>
+            )}
+            {!everything && (
+              <ResourceSelector accesses={accesses} onChange={setAccesses} />
+            )}
+            {everything && (
+              <p className="text-xs text-muted-foreground">
+                This key will have access to all current and future solved
+                problems.
+              </p>
+            )}
           </CardContent>
         </Card>
 

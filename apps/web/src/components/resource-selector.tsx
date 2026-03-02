@@ -121,6 +121,7 @@ export function ResourceSelector({
           <p className="text-xs font-medium text-muted-foreground">
             Selected ({accesses.length})
           </p>
+          <div className="max-h-48 overflow-y-auto space-y-1">
           {accesses.map((access, index) => (
             <div
               key={`${access.resourceType}-${access.resourceId}`}
@@ -148,6 +149,7 @@ export function ResourceSelector({
               </Button>
             </div>
           ))}
+          </div>
         </div>
       )}
 

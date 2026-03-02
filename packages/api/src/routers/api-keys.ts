@@ -24,10 +24,14 @@ export const apiKeysRouter = {
       z.object({
         name: z.string().min(1),
         accesses: z.array(accessScopeSchema),
+        everything: z.boolean().optional(),
       })
     )
     .handler(async ({ input, context }) => {
       const userId = context.session.user.id;
+      const isAdmin =
+        (context.session.user as { role?: string }).role === "ADMIN";
+      const everything = input.everything === true && isAdmin;
 
       // Generate a secure random API key
       const plainKey = `sp_${randomBytes(32).toString("hex")}`;
@@ -37,12 +41,15 @@ export const apiKeysRouter = {
         data: {
           name: input.name,
           hashedKey,
+          everything,
           userId,
           accesses: {
-            create: input.accesses.map((a) => ({
-              resourceType: a.resourceType,
-              resourceId: a.resourceId,
-            })),
+            create: everything
+              ? []
+              : input.accesses.map((a) => ({
+                  resourceType: a.resourceType,
+                  resourceId: a.resourceId,
+                })),
           },
         },
         include: {
@@ -60,6 +67,7 @@ export const apiKeysRouter = {
         id: apiKey.id,
         name: apiKey.name,
         key: plainKey,
+        everything: apiKey.everything,
         createdAt: apiKey.createdAt,
         accesses: apiKey.accesses,
       };
@@ -85,6 +93,7 @@ export const apiKeysRouter = {
     return keys.map((k) => ({
       id: k.id,
       name: k.name,
+      everything: k.everything,
       createdAt: k.createdAt,
       revokedAt: k.revokedAt,
       accesses: k.accesses,
@@ -132,10 +141,14 @@ export const apiKeysRouter = {
       z.object({
         id: z.string().min(1),
         accesses: z.array(accessScopeSchema),
+        everything: z.boolean().optional(),
       })
     )
     .handler(async ({ input, context }) => {
       const userId = context.session.user.id;
+      const isAdmin =
+        (context.session.user as { role?: string }).role === "ADMIN";
+      const everything = input.everything === true && isAdmin;
 
       const apiKey = await prisma.apiKey.findUnique({
         where: { id: input.id },
@@ -160,20 +173,26 @@ export const apiKeysRouter = {
         });
       }
 
-      // Replace all access records
+      // Replace all access records and update everything flag
       await prisma.$transaction([
+        prisma.apiKey.update({
+          where: { id: input.id },
+          data: { everything },
+        }),
         prisma.apiKeyAccess.deleteMany({
           where: { apiKeyId: input.id },
         }),
-        ...input.accesses.map((a) =>
-          prisma.apiKeyAccess.create({
-            data: {
-              apiKeyId: input.id,
-              resourceType: a.resourceType,
-              resourceId: a.resourceId,
-            },
-          })
-        ),
+        ...(everything
+          ? []
+          : input.accesses.map((a) =>
+              prisma.apiKeyAccess.create({
+                data: {
+                  apiKeyId: input.id,
+                  resourceType: a.resourceType,
+                  resourceId: a.resourceId,
+                },
+              })
+            )),
       ]);
 
       const updated = await prisma.apiKey.findUnique({
@@ -192,6 +211,7 @@ export const apiKeysRouter = {
       return {
         id: updated!.id,
         name: updated!.name,
+        everything: updated!.everything,
         createdAt: updated!.createdAt,
         accesses: updated!.accesses,
       };

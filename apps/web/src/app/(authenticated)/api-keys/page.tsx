@@ -21,18 +21,25 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { ResourceSelector, type AccessScope } from "@/components/resource-selector";
+import { Checkbox } from "@/components/ui/checkbox";
+import { authClient } from "@/lib/auth-client";
 
 export default function ApiKeysPage() {
   const queryClient = useQueryClient();
+  const { data: session } = authClient.useSession();
+  const isAdmin =
+    (session?.user as { role?: string } | undefined)?.role === "ADMIN";
   const query = useQuery(orpc.apiKeys.list.queryOptions({}));
   const keys = query.data ?? [];
 
   const [editingKey, setEditingKey] = useState<{
     id: string;
     name: string;
+    everything: boolean;
     accesses: AccessScope[];
   } | null>(null);
   const [editAccesses, setEditAccesses] = useState<AccessScope[]>([]);
+  const [editEverything, setEditEverything] = useState(false);
 
   const revokeMutation = useMutation({
     ...orpc.apiKeys.revoke.mutationOptions(),
@@ -60,6 +67,7 @@ export default function ApiKeysPage() {
   const openEditSheet = (key: {
     id: string;
     name: string;
+    everything: boolean;
     accesses: { id: string; resourceType: string; resourceId: string }[];
   }) => {
     const mapped = key.accesses.map((a) => ({
@@ -67,14 +75,16 @@ export default function ApiKeysPage() {
       resourceId: a.resourceId,
     }));
     setEditAccesses(mapped);
-    setEditingKey({ id: key.id, name: key.name, accesses: mapped });
+    setEditEverything(key.everything);
+    setEditingKey({ id: key.id, name: key.name, everything: key.everything, accesses: mapped });
   };
 
   const handleSaveAccess = () => {
     if (!editingKey) return;
     updateAccessMutation.mutate({
       id: editingKey.id,
-      accesses: editAccesses,
+      accesses: editEverything ? [] : editAccesses,
+      everything: editEverything,
     });
   };
 
@@ -143,7 +153,14 @@ export default function ApiKeysPage() {
                       <p className="text-xs text-muted-foreground">
                         Created {new Date(key.createdAt).toLocaleDateString()}
                       </p>
-                      {key.accesses.length > 0 ? (
+                      {key.everything ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Access:{" "}
+                          <span className="mr-1 inline-block rounded bg-primary/10 text-primary px-1.5 py-0.5 font-medium">
+                            Everything
+                          </span>
+                        </p>
+                      ) : key.accesses.length > 0 ? (
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           Access:{" "}
                           {key.accesses.map((a) => (
@@ -201,7 +218,25 @@ export default function ApiKeysPage() {
             </SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-6 px-4">
-            <ResourceSelector accesses={editAccesses} onChange={setEditAccesses} />
+            {isAdmin && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={editEverything}
+                  onCheckedChange={(checked) => setEditEverything(checked === true)}
+                />
+                <span className="text-sm font-medium">
+                  Grant access to all solved problems
+                </span>
+              </label>
+            )}
+            {editEverything ? (
+              <p className="text-xs text-muted-foreground">
+                This key will have access to all current and future solved
+                problems.
+              </p>
+            ) : (
+              <ResourceSelector accesses={editAccesses} onChange={setEditAccesses} />
+            )}
             <div className="flex gap-3">
               <Button
                 onClick={handleSaveAccess}

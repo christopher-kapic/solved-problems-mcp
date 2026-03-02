@@ -37,13 +37,14 @@ model Share {
 }
 
 model ApiKey {
-  id        String    @id @default(cuid())
-  name      String
-  hashedKey String    @unique
-  userId    String
-  user      User      @relation("apiKeys", fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
-  revokedAt DateTime?
+  id         String    @id @default(cuid())
+  name       String
+  hashedKey  String    @unique
+  everything Boolean   @default(false)
+  userId     String
+  user       User      @relation("apiKeys", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
 
   accesses ApiKeyAccess[]
   drafts   Draft[]

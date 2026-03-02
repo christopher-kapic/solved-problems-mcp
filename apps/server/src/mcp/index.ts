@@ -52,6 +52,18 @@ export async function authenticateApiKey(
 async function getAccessibleSolvedProblemIds(
   apiKeyId: string,
 ): Promise<string[]> {
+  const apiKey = await prisma.apiKey.findUnique({
+    where: { id: apiKeyId },
+    select: { everything: true },
+  });
+
+  if (apiKey?.everything) {
+    const allProblems = await prisma.solvedProblem.findMany({
+      select: { id: true },
+    });
+    return allProblems.map((sp) => sp.id);
+  }
+
   const accesses = await prisma.apiKeyAccess.findMany({
     where: { apiKeyId },
     select: { resourceType: true, resourceId: true },
