@@ -69,6 +69,7 @@ COPY --from=builder /app/apps/server/node_modules ./apps/server/node_modules
 # Copy Next.js standalone output (preserving monorepo paths for module resolution)
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
 
 # Set WORKDIR so dir: "../../web" resolves from apps/server/dist/ to apps/web/
 WORKDIR /app/apps/server
