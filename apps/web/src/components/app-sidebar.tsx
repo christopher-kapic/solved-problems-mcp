@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -58,7 +59,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         )}
       >
         <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
-          <Link href="/dashboard" className="text-lg font-semibold">
+          <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold">
+            <Image src="/logo.png" alt="" width={28} height={28} />
             Solved Problems
           </Link>
           <Button
@@ -128,7 +130,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           <Button variant="ghost" size="icon-sm" onClick={() => setMobileOpen(true)}>
             <Menu className="h-5 w-5" />
           </Button>
-          <span className="ml-3 text-lg font-semibold">Solved Problems</span>
+          <Image src="/logo.png" alt="" width={24} height={24} className="ml-3" />
+          <span className="ml-1 text-lg font-semibold">Solved Problems</span>
         </div>
 
         <main className="flex-1 overflow-y-auto p-6">{children}</main>

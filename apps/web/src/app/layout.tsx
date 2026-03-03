@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "solved-problems",
-  description: "solved-problems",
+  title: "Solved Problems",
+  description: "Version, share, and reuse code solutions",
 };
 
 export default function RootLayout({
