@@ -28,6 +28,10 @@ const proposedDataSchema = z.object({
     )
     .optional(),
   details: z.string().optional(),
+  newId: z
+    .string()
+    .regex(/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/, "Invalid ID format")
+    .optional(),
 });
 
 async function approveDraft(draftId: string, userId: string) {
@@ -125,14 +129,49 @@ async function approveDraft(draftId: string, userId: string) {
       }
     }
 
-    await prisma.solvedProblem.update({
-      where: { id: draft.solvedProblemId },
-      data: {
-        name: data.name,
-        description: data.description,
-        appType: data.appType,
-      },
-    });
+    // Handle ID rename if newId is proposed
+    if (data.newId && data.newId !== draft.solvedProblemId) {
+      // Check the new ID isn't already taken
+      const existingWithNewId = await prisma.solvedProblem.findUnique({
+        where: { id: data.newId },
+      });
+      if (existingWithNewId) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: `Cannot rename: a solved problem with ID "${data.newId}" already exists`,
+        });
+      }
+
+      const oldId = draft.solvedProblemId!;
+
+      // Update polymorphic references (Share, ApiKeyAccess) that aren't real FKs
+      await prisma.share.updateMany({
+        where: { resourceType: "SOLVED_PROBLEM", resourceId: oldId },
+        data: { resourceId: data.newId },
+      });
+      await prisma.apiKeyAccess.updateMany({
+        where: { resourceType: "SOLVED_PROBLEM", resourceId: oldId },
+        data: { resourceId: data.newId },
+      });
+
+      await prisma.solvedProblem.update({
+        where: { id: oldId },
+        data: {
+          id: data.newId,
+          name: data.name,
+          description: data.description,
+          appType: data.appType,
+        },
+      });
+    } else {
+      await prisma.solvedProblem.update({
+        where: { id: draft.solvedProblemId },
+        data: {
+          name: data.name,
+          description: data.description,
+          appType: data.appType,
+        },
+      });
+    }
   } else {
     let id = slugify(data.name);
     const existing = await prisma.solvedProblem.findUnique({

@@ -27,6 +27,7 @@ interface ProposedData {
     type: "SERVER" | "CLIENT";
   }[];
   details?: string;
+  newId?: string;
 }
 
 export default function DraftDetailPage() {
@@ -246,6 +247,20 @@ export default function DraftDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {proposed?.newId && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Proposed ID Rename
+                </p>
+                <p className="mt-0.5 text-sm">
+                  <span className="text-muted-foreground line-through">
+                    {draft.solvedProblemId}
+                  </span>
+                  {" → "}
+                  <span className="font-medium">{proposed.newId}</span>
+                </p>
+              </div>
+            )}
             <Field label="Name" value={proposed?.name} />
             <Field label="Description" value={proposed?.description} />
             <Field label="App Type" value={proposed?.appType} />

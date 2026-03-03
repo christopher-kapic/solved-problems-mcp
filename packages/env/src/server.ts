@@ -8,6 +8,7 @@ export const env = createEnv({
     BETTER_AUTH_SECRET: z.string().min(32),
     CORS_ORIGIN: z.url().optional(),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+    MCP_LIST_EXPAND_DEFAULT: z.coerce.boolean().default(false),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
