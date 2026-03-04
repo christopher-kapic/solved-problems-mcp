@@ -595,6 +595,8 @@ IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per reque
 
 For updates: pass the "id" of the existing solved problem. You can optionally propose renaming it by passing "newId" — this is useful when reorganizing solved problems into folders (e.g. renaming "astro-hono-middleware" to "web-middleware/hono/astro"). The newId must use only lowercase letters, numbers, hyphens, and "/" for folder nesting.
 
+IMPORTANT: The "id" must exactly match an existing solved problem's ID. If unsure of the exact ID, call list_solved_problems or get_solved_problems first to verify. If the ID doesn't match, the request will be rejected with an error.
+
 For new proposals: omit "id" and provide all required fields. The owner will choose the final ID when approving.
 
 All fields (name, description, appType, details) are required. Tags and dependencies are optional.`,
@@ -603,7 +605,7 @@ All fields (name, description, appType, details) are required. Tags and dependen
         .string()
         .optional()
         .describe(
-          "ID of an existing solved problem to propose an update to. Omit when proposing a brand new solved problem.",
+          "ID of an existing solved problem to propose an update to. Omit when proposing a brand new solved problem. Must exactly match an existing ID — use list_solved_problems to verify the ID first.",
         ),
       newId: z
         .string()
@@ -671,12 +673,22 @@ All fields (name, description, appType, details) are required. Tags and dependen
       const ctx = getMcpContext();
 
       // If updating an existing solved problem, verify access
-      // If the solved problem doesn't exist or isn't accessible, treat as a new proposal
       let solvedProblemId: string | null = null;
       if (params.id) {
         const accessibleIds = await getAccessibleSolvedProblemIds(ctx.apiKeyId);
         if (accessibleIds.includes(params.id)) {
           solvedProblemId = params.id;
+        } else {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: `Solved problem with id "${params.id}" not found or not accessible. Use list_solved_problems or get_solved_problems to find the correct ID before proposing an update.`,
+                }),
+              },
+            ],
+          };
         }
       }
 
