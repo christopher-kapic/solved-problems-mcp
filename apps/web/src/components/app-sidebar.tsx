@@ -16,9 +16,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import { orpc } from "@/utils/orpc";
 
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
@@ -38,6 +40,10 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const { data: session } = authClient.useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const draftsQuery = useQuery(orpc.drafts.list.queryOptions({}));
+  const pendingDraftCount = (draftsQuery.data ?? []).filter(
+    (d) => d.status === "PENDING"
+  ).length;
 
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN";
 
@@ -91,6 +97,9 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     {label}
+                    {label === "Drafts" && pendingDraftCount > 0 && (
+                      <span className="ml-auto h-2 w-2 rounded-full bg-green-500" />
+                    )}
                   </Link>
                 </li>
               );

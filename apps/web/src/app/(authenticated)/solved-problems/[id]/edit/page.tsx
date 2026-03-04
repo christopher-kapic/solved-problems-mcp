@@ -1,18 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { orpc } from "@/utils/orpc";
+import { orpc, client } from "@/utils/orpc";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Autocomplete, type AutocompleteOption } from "@/components/autocomplete";
 import {
   Card,
   CardContent,
@@ -410,14 +411,24 @@ function LinkedProblemList({
   links: LinkedProblem[];
   onChange: (links: LinkedProblem[]) => void;
 }) {
-  const [problemId, setProblemId] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedName, setSelectedName] = useState("");
   const [reason, setReason] = useState("");
 
+  const fetchProblems = useCallback(
+    async (query: string, signal: AbortSignal): Promise<AutocompleteOption[]> => {
+      const results = await client.solvedProblems.list({ search: query }, { signal });
+      return results.map((sp) => ({ value: sp.id, label: sp.name }));
+    },
+    []
+  );
+
   const addLink = () => {
-    if (!problemId.trim() || !reason.trim()) return;
-    if (links.some((l) => l.id === problemId.trim())) return;
-    onChange([...links, { id: problemId.trim(), reason: reason.trim() }]);
-    setProblemId("");
+    if (!selectedId.trim() || !reason.trim()) return;
+    if (links.some((l) => l.id === selectedId.trim())) return;
+    onChange([...links, { id: selectedId.trim(), reason: reason.trim() }]);
+    setSelectedId("");
+    setSelectedName("");
     setReason("");
   };
 
@@ -448,10 +459,19 @@ function LinkedProblemList({
         </div>
       )}
       <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-        <Input
-          placeholder="Problem ID"
-          value={problemId}
-          onChange={(e) => setProblemId(e.target.value)}
+        <Autocomplete
+          value={selectedId}
+          displayValue={selectedName || selectedId}
+          onSelect={(opt) => {
+            setSelectedId(opt.value);
+            setSelectedName(opt.label);
+          }}
+          onClear={() => {
+            setSelectedId("");
+            setSelectedName("");
+          }}
+          fetchOptions={fetchProblems}
+          placeholder="Search problems..."
         />
         <Input
           placeholder="Reason"

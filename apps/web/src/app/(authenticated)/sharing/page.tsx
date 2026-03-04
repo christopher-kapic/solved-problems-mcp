@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { orpc } from "@/utils/orpc";
+import { orpc, client } from "@/utils/orpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Autocomplete, type AutocompleteOption } from "@/components/autocomplete";
 import {
   Card,
   CardContent,
@@ -28,13 +29,9 @@ function ShareDialog({
   const [email, setEmail] = useState("");
   const [resourceType, setResourceType] = useState<ResourceType>("SOLVED_PROBLEM");
   const [resourceId, setResourceId] = useState("");
+  const [resourceName, setResourceName] = useState("");
   const [permission, setPermission] = useState<Permission>("READ");
   const [lookupError, setLookupError] = useState("");
-
-  const solvedProblemsQuery = useQuery(
-    orpc.solvedProblems.list.queryOptions({ input: {} })
-  );
-  const groupsQuery = useQuery(orpc.groups.list.queryOptions({}));
 
   const shareMutation = useMutation({
     ...orpc.sharing.share.mutationOptions(),
@@ -72,16 +69,20 @@ function ShareDialog({
     });
   };
 
-  const resources =
-    resourceType === "SOLVED_PROBLEM"
-      ? (solvedProblemsQuery.data ?? []).map((sp) => ({
-          id: sp.id,
-          name: sp.name,
-        }))
-      : (groupsQuery.data ?? []).map((g) => ({
-          id: g.id,
-          name: g.name,
-        }));
+  const fetchResources = useCallback(
+    async (query: string, signal: AbortSignal): Promise<AutocompleteOption[]> => {
+      if (resourceType === "SOLVED_PROBLEM") {
+        const results = await client.solvedProblems.list({ search: query }, { signal });
+        return results.map((sp) => ({ value: sp.id, label: sp.name }));
+      }
+      const groups = await client.groups.list({}, { signal });
+      const lower = query.toLowerCase();
+      return groups
+        .filter((g) => g.name.toLowerCase().includes(lower))
+        .map((g) => ({ value: g.id, label: g.name }));
+    },
+    [resourceType]
+  );
 
   return (
     <Card>
@@ -98,6 +99,7 @@ function ShareDialog({
               onChange={(e) => {
                 setResourceType(e.target.value as ResourceType);
                 setResourceId("");
+                setResourceName("");
               }}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
@@ -107,20 +109,25 @@ function ShareDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="share-resource">Resource</Label>
-            <select
-              id="share-resource"
+            <Label>Resource</Label>
+            <Autocomplete
               value={resourceId}
-              onChange={(e) => setResourceId(e.target.value)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="">Select a resource...</option>
-              {resources.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              displayValue={resourceName || resourceId}
+              onSelect={(opt) => {
+                setResourceId(opt.value);
+                setResourceName(opt.label);
+              }}
+              onClear={() => {
+                setResourceId("");
+                setResourceName("");
+              }}
+              fetchOptions={fetchResources}
+              placeholder={
+                resourceType === "SOLVED_PROBLEM"
+                  ? "Search solved problems..."
+                  : "Search groups..."
+              }
+            />
           </div>
 
           <div className="space-y-2">
