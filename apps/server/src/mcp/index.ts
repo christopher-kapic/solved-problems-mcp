@@ -441,12 +441,21 @@ Supports filtering by server/client dependencies, tags (case-insensitive), and d
 
 IDs use "/" as a folder delimiter (e.g. "web-middleware/hono/nextjs"). If you pass a folder prefix (e.g. "web-middleware/hono") that doesn't match an exact solved problem, it returns a list of all sub-solutions under that prefix so you can find the most relevant one.
 
-Only returns data for solved problems your API key has access to. Inaccessible IDs are silently omitted.`,
+Only returns data for solved problems your API key has access to. Inaccessible IDs are silently omitted.
+
+IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per request. If you need more, make multiple requests. Use summary_only=true to preview solved problems without fetching full markdown content.`,
     {
       ids: z
         .array(z.string())
+        .max(5)
         .describe(
-          "IDs of solved problems to retrieve. Can also be folder prefixes to list sub-solutions.",
+          "IDs of solved problems to retrieve (max 5 per request). Can also be folder prefixes to list sub-solutions.",
+        ),
+      summary_only: z
+        .boolean()
+        .optional()
+        .describe(
+          "If true, return metadata (tags, dependencies, version number) without the full markdown details content. Useful for previewing solved problems before fetching full content.",
         ),
     },
     async (params) => {
@@ -509,7 +518,9 @@ Only returns data for solved problems your API key has access to. Inaccessible I
             latestVersion: sp.versions[0]
               ? {
                   version: sp.versions[0].version,
-                  details: sp.versions[0].details,
+                  ...(params.summary_only
+                    ? {}
+                    : { details: sp.versions[0].details }),
                   createdAt: sp.versions[0].createdAt.toISOString(),
                 }
               : null,
