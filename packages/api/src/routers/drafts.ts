@@ -27,6 +27,14 @@ const proposedDataSchema = z.object({
       })
     )
     .optional(),
+  linkedProblems: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        reason: z.string().min(1),
+      })
+    )
+    .optional(),
   details: z.string().optional(),
   newId: z
     .string()
@@ -129,6 +137,22 @@ async function approveDraft(draftId: string, userId: string) {
       }
     }
 
+    // Update linked problems if provided
+    if (data.linkedProblems !== undefined) {
+      await prisma.linkedProblem.deleteMany({
+        where: { solvedProblemId: draft.solvedProblemId! },
+      });
+      if (data.linkedProblems.length > 0) {
+        await prisma.linkedProblem.createMany({
+          data: data.linkedProblems.map((lp) => ({
+            solvedProblemId: draft.solvedProblemId!,
+            linkedSolvedProblemId: lp.id,
+            reason: lp.reason,
+          })),
+        });
+      }
+    }
+
     // Handle ID rename if newId is proposed
     if (data.newId && data.newId !== draft.solvedProblemId) {
       // Check the new ID isn't already taken
@@ -151,6 +175,16 @@ async function approveDraft(draftId: string, userId: string) {
       await prisma.apiKeyAccess.updateMany({
         where: { resourceType: "SOLVED_PROBLEM", resourceId: oldId },
         data: { resourceId: data.newId },
+      });
+
+      // Update LinkedProblem references in both directions
+      await prisma.linkedProblem.updateMany({
+        where: { linkedSolvedProblemId: oldId },
+        data: { linkedSolvedProblemId: data.newId },
+      });
+      await prisma.linkedProblem.updateMany({
+        where: { solvedProblemId: oldId },
+        data: { solvedProblemId: data.newId },
       });
 
       await prisma.solvedProblem.update({
@@ -222,6 +256,14 @@ async function approveDraft(draftId: string, userId: string) {
                 version: dep.version,
                 packageManager: dep.packageManager,
                 type: dep.type,
+              })),
+            }
+          : undefined,
+        linkedProblems: data.linkedProblems?.length
+          ? {
+              create: data.linkedProblems.map((lp) => ({
+                linkedSolvedProblemId: lp.id,
+                reason: lp.reason,
               })),
             }
           : undefined,
@@ -451,6 +493,14 @@ export const draftsRouter = {
                   version: dep.version,
                   packageManager: dep.packageManager,
                   type: dep.type,
+                })),
+              }
+            : undefined,
+          linkedProblems: data.linkedProblems?.length
+            ? {
+                create: data.linkedProblems.map((lp) => ({
+                  linkedSolvedProblemId: lp.id,
+                  reason: lp.reason,
                 })),
               }
             : undefined,

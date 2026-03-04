@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { orpc } from "@/utils/orpc";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,12 +38,20 @@ interface Dependency {
   packageManager: string;
 }
 
+interface LinkedProblem {
+  id: string;
+  reason: string;
+}
+
 export default function EditSolvedProblemPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { data: session } = authClient.useSession();
   const [serverDeps, setServerDeps] = useState<Dependency[]>([]);
   const [clientDeps, setClientDeps] = useState<Dependency[]>([]);
+  const [linkedProblems, setLinkedProblems] = useState<LinkedProblem[]>([]);
+  const [newId, setNewId] = useState("");
   const [initialized, setInitialized] = useState(false);
 
   const query = useQuery(
@@ -88,16 +97,21 @@ export default function EditSolvedProblemPage() {
           .filter((d) => d.type === "CLIENT")
           .map((d) => ({ name: d.name, version: d.version, packageManager: d.packageManager }))
       );
+      setLinkedProblems(
+        sp.linkedProblems.map((lp) => ({ id: lp.id, reason: lp.reason }))
+      );
+      setNewId(sp.id);
       setInitialized(true);
     }
   }, [query.data, initialized, reset]);
 
   const mutation = useMutation({
     ...orpc.solvedProblems.update.mutationOptions(),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Solved problem updated successfully");
       queryClient.invalidateQueries();
-      router.push(`/solved-problems/${params.id}`);
+      const redirectId = data.newId ?? params.id;
+      router.push(`/solved-problems/${redirectId}`);
     },
     onError: (error) => {
       toast.error(`Failed to update: ${error.message}`);
@@ -124,7 +138,9 @@ export default function EditSolvedProblemPage() {
       appType: values.appType,
       tags,
       dependencies,
+      linkedProblems,
       details: values.details ?? "",
+      ...(newId !== params.id ? { newId } : {}),
     });
   };
 
@@ -173,6 +189,22 @@ export default function EditSolvedProblemPage() {
             <CardTitle className="text-sm">Basic Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {session?.user?.id === query.data?.owner.id && (
+              <div className="space-y-1.5">
+                <Label htmlFor="newId">Problem ID</Label>
+                <Input
+                  id="newId"
+                  value={newId}
+                  onChange={(e) => setNewId(e.target.value)}
+                  placeholder="e.g. auth/jwt-tokens"
+                />
+                {newId && !/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/.test(newId) && (
+                  <p className="text-xs text-destructive">
+                    Must contain only lowercase letters, numbers, hyphens, and &quot;/&quot; for folders
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="name">Name</Label>
               <Input
@@ -249,6 +281,19 @@ export default function EditSolvedProblemPage() {
             <DependencyList
               deps={clientDeps}
               onChange={setClientDeps}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Linked Problems */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Linked Problems</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <LinkedProblemList
+              links={linkedProblems}
+              onChange={setLinkedProblems}
             />
           </CardContent>
         </Card>
@@ -351,6 +396,69 @@ function DependencyList({
           className="w-20"
         />
         <Button type="button" variant="outline" size="sm" onClick={addDep}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LinkedProblemList({
+  links,
+  onChange,
+}: {
+  links: LinkedProblem[];
+  onChange: (links: LinkedProblem[]) => void;
+}) {
+  const [problemId, setProblemId] = useState("");
+  const [reason, setReason] = useState("");
+
+  const addLink = () => {
+    if (!problemId.trim() || !reason.trim()) return;
+    if (links.some((l) => l.id === problemId.trim())) return;
+    onChange([...links, { id: problemId.trim(), reason: reason.trim() }]);
+    setProblemId("");
+    setReason("");
+  };
+
+  const removeLink = (index: number) => {
+    onChange(links.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-3">
+      {links.length > 0 && (
+        <div className="space-y-1.5">
+          {links.map((link, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 rounded border border-border px-2.5 py-1.5 text-xs"
+            >
+              <span className="font-medium">{link.id}</span>
+              <span className="text-muted-foreground">— {link.reason}</span>
+              <button
+                type="button"
+                className="ml-auto text-muted-foreground hover:text-destructive"
+                onClick={() => removeLink(i)}
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+        <Input
+          placeholder="Problem ID"
+          value={problemId}
+          onChange={(e) => setProblemId(e.target.value)}
+        />
+        <Input
+          placeholder="Reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <Button type="button" variant="outline" size="sm" onClick={addLink}>
           Add
         </Button>
       </div>

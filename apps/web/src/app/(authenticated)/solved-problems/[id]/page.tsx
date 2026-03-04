@@ -262,6 +262,57 @@ export default function SolvedProblemDetailPage() {
         </div>
       )}
 
+      {/* Linked Problems */}
+      {(sp.linkedProblems.length > 0 || sp.linkedBy.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Linked Problems</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {sp.linkedProblems.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Links to</p>
+                {sp.linkedProblems.map((lp) => (
+                  <div key={lp.id} className="flex items-center gap-2 text-xs">
+                    {lp.accessible ? (
+                      <Link
+                        href={`/solved-problems/${lp.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {lp.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-muted-foreground">{lp.id}</span>
+                    )}
+                    <span className="text-muted-foreground">— {lp.reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sp.linkedBy.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Linked by</p>
+                {sp.linkedBy.map((lp) => (
+                  <div key={lp.id} className="flex items-center gap-2 text-xs">
+                    {lp.accessible ? (
+                      <Link
+                        href={`/solved-problems/${lp.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {lp.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-muted-foreground">{lp.id}</span>
+                    )}
+                    <span className="text-muted-foreground">— {lp.reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Details (Markdown) */}
       {sp.latestVersion && (
         <Card>

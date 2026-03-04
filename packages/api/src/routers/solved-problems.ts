@@ -19,6 +19,11 @@ const dependencySchema = z.object({
   type: z.enum(["SERVER", "CLIENT"]),
 });
 
+const linkedProblemSchema = z.object({
+  id: z.string().min(1),
+  reason: z.string().min(1),
+});
+
 /**
  * Build accessible where clause by resolving share IDs first,
  * so we can use them in Prisma queries properly.
@@ -201,6 +206,20 @@ export const solvedProblemsRouter = {
           owner: {
             select: { id: true, name: true, email: true },
           },
+          linkedProblems: {
+            include: {
+              linkedSolvedProblem: {
+                select: { id: true, name: true, description: true },
+              },
+            },
+          },
+          linkedBy: {
+            include: {
+              solvedProblem: {
+                select: { id: true, name: true, description: true },
+              },
+            },
+          },
         },
       });
 
@@ -210,10 +229,42 @@ export const solvedProblemsRouter = {
         });
       }
 
+      // Check which linked problems are accessible to this user
+      const allLinkedIds = [
+        ...solvedProblem.linkedProblems.map((lp) => lp.linkedSolvedProblemId),
+        ...solvedProblem.linkedBy.map((lp) => lp.solvedProblemId),
+      ];
+
+      const accessibleLinked = allLinkedIds.length > 0
+        ? await prisma.solvedProblem.findMany({
+            where: {
+              id: { in: allLinkedIds },
+              ...accessWhere,
+            },
+            select: { id: true },
+          })
+        : [];
+
+      const accessibleLinkedIds = new Set(accessibleLinked.map((sp) => sp.id));
+
       return {
         ...solvedProblem,
         latestVersion: solvedProblem.versions[0] ?? null,
         tags: solvedProblem.tags.map((t) => t.tag),
+        linkedProblems: solvedProblem.linkedProblems.map((lp) => ({
+          id: lp.linkedSolvedProblem.id,
+          name: lp.linkedSolvedProblem.name,
+          description: lp.linkedSolvedProblem.description,
+          reason: lp.reason,
+          accessible: accessibleLinkedIds.has(lp.linkedSolvedProblemId),
+        })),
+        linkedBy: solvedProblem.linkedBy.map((lp) => ({
+          id: lp.solvedProblem.id,
+          name: lp.solvedProblem.name,
+          description: lp.solvedProblem.description,
+          reason: lp.reason,
+          accessible: accessibleLinkedIds.has(lp.solvedProblemId),
+        })),
       };
     }),
 
@@ -225,6 +276,7 @@ export const solvedProblemsRouter = {
         appType: z.string().min(1),
         tags: z.array(z.string()).optional(),
         dependencies: z.array(dependencySchema).optional(),
+        linkedProblems: z.array(linkedProblemSchema).optional(),
         details: z.string().optional(),
         copiedFromId: z.string().optional(),
       })
@@ -287,6 +339,14 @@ export const solvedProblemsRouter = {
                 })),
               }
             : undefined,
+          linkedProblems: input.linkedProblems?.length
+            ? {
+                create: input.linkedProblems.map((lp) => ({
+                  linkedSolvedProblemId: lp.id,
+                  reason: lp.reason,
+                })),
+              }
+            : undefined,
         },
         include: {
           versions: true,
@@ -307,7 +367,12 @@ export const solvedProblemsRouter = {
         appType: z.string().optional(),
         tags: z.array(z.string()).optional(),
         dependencies: z.array(dependencySchema).optional(),
+        linkedProblems: z.array(linkedProblemSchema).optional(),
         details: z.string().optional(),
+        newId: z
+          .string()
+          .regex(/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/, "Invalid ID format")
+          .optional(),
       })
     )
     .handler(async ({ input, context }) => {
@@ -407,10 +472,69 @@ export const solvedProblemsRouter = {
         }
       }
 
+      // Update linked problems if provided
+      if (input.linkedProblems !== undefined) {
+        await prisma.linkedProblem.deleteMany({
+          where: { solvedProblemId: input.id },
+        });
+
+        if (input.linkedProblems.length > 0) {
+          await prisma.linkedProblem.createMany({
+            data: input.linkedProblems.map((lp) => ({
+              solvedProblemId: input.id,
+              linkedSolvedProblemId: lp.id,
+              reason: lp.reason,
+            })),
+          });
+        }
+      }
+
+      // Handle ID rename (owner-only)
+      let finalId = input.id;
+      if (input.newId && input.newId !== input.id) {
+        if (solvedProblem.ownerId !== userId) {
+          throw new ORPCError("FORBIDDEN", {
+            message: "Only the owner can rename a solved problem",
+          });
+        }
+
+        const existingWithNewId = await prisma.solvedProblem.findUnique({
+          where: { id: input.newId },
+        });
+        if (existingWithNewId) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: `Cannot rename: a solved problem with ID "${input.newId}" already exists`,
+          });
+        }
+
+        // Update polymorphic references
+        await prisma.share.updateMany({
+          where: { resourceType: "SOLVED_PROBLEM", resourceId: input.id },
+          data: { resourceId: input.newId },
+        });
+        await prisma.apiKeyAccess.updateMany({
+          where: { resourceType: "SOLVED_PROBLEM", resourceId: input.id },
+          data: { resourceId: input.newId },
+        });
+
+        // Update LinkedProblem references in both directions
+        await prisma.linkedProblem.updateMany({
+          where: { linkedSolvedProblemId: input.id },
+          data: { linkedSolvedProblemId: input.newId },
+        });
+        await prisma.linkedProblem.updateMany({
+          where: { solvedProblemId: input.id },
+          data: { solvedProblemId: input.newId },
+        });
+
+        finalId = input.newId;
+      }
+
       // Update core fields
       const updated = await prisma.solvedProblem.update({
         where: { id: input.id },
         data: {
+          ...(input.newId && input.newId !== input.id ? { id: input.newId } : {}),
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.description !== undefined
             ? { description: input.description }
@@ -427,7 +551,7 @@ export const solvedProblemsRouter = {
         },
       });
 
-      return updated;
+      return { ...updated, newId: finalId !== input.id ? finalId : undefined };
     }),
 
   delete: protectedProcedure

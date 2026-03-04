@@ -485,6 +485,8 @@ IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per reque
 
       // Fetch exact matches with full details
       if (exactIds.length > 0) {
+        const accessibleIdSet = new Set(accessibleIds);
+
         const solvedProblems = await prisma.solvedProblem.findMany({
           where: { id: { in: exactIds } },
           include: {
@@ -495,6 +497,13 @@ IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per reque
             versions: {
               orderBy: { version: "desc" },
               take: 1,
+            },
+            linkedProblems: {
+              include: {
+                linkedSolvedProblem: {
+                  select: { id: true, name: true },
+                },
+              },
             },
           },
         });
@@ -515,6 +524,13 @@ IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per reque
               packageManager: d.packageManager,
               type: d.type,
             })),
+            linkedProblems: sp.linkedProblems
+              .filter((lp) => accessibleIdSet.has(lp.linkedSolvedProblemId))
+              .map((lp) => ({
+                id: lp.linkedSolvedProblem.id,
+                name: lp.linkedSolvedProblem.name,
+                reason: lp.reason,
+              })),
             latestVersion: sp.versions[0]
               ? {
                   version: sp.versions[0].version,
@@ -639,6 +655,17 @@ All fields (name, description, appType, details) are required. Tags and dependen
         .describe(
           "Client-side dependencies required by this solution",
         ),
+      linkedProblems: z
+        .array(
+          z.object({
+            id: z.string(),
+            reason: z.string(),
+          }),
+        )
+        .optional()
+        .describe(
+          "Other solved problems this one links to, with a reason for each link (e.g. [{id: 'auth/jwt', reason: 'Uses JWT auth pattern'}])",
+        ),
     },
     async (params) => {
       const ctx = getMcpContext();
@@ -692,6 +719,7 @@ All fields (name, description, appType, details) are required. Tags and dependen
         serverDependencies: params.serverDependencies ?? [],
         clientDependencies: params.clientDependencies ?? [],
         ...(params.newId ? { newId: params.newId } : {}),
+        ...(params.linkedProblems ? { linkedProblems: params.linkedProblems } : {}),
       };
 
       const draft = await prisma.draft.create({

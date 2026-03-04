@@ -21,6 +21,8 @@ model SolvedProblem {
   dependencies Dependency[]
   groupMemberships GroupMembership[]
   drafts       Draft[]
+  linkedProblems  LinkedProblem[] @relation("linkedFrom")
+  linkedBy        LinkedProblem[] @relation("linkedTo")
 
   @@index([ownerId])
   @@map("solved_problem")
@@ -93,4 +95,17 @@ model GroupMembership {
   @@id([groupId, solvedProblemId])
   @@index([solvedProblemId])
   @@map("group_membership")
+}
+
+model LinkedProblem {
+  id                    String        @id @default(cuid())
+  solvedProblemId       String
+  solvedProblem         SolvedProblem @relation("linkedFrom", fields: [solvedProblemId], references: [id], onDelete: Cascade)
+  linkedSolvedProblemId String
+  linkedSolvedProblem   SolvedProblem @relation("linkedTo", fields: [linkedSolvedProblemId], references: [id], onDelete: Cascade)
+  reason                String
+
+  @@unique([solvedProblemId, linkedSolvedProblemId])
+  @@index([linkedSolvedProblemId])
+  @@map("linked_problem")
 }
