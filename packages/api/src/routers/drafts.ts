@@ -42,7 +42,11 @@ const proposedDataSchema = z.object({
     .optional(),
 });
 
-async function approveDraft(draftId: string, userId: string) {
+async function approveDraft(
+  draftId: string,
+  userId: string,
+  renameMap?: Map<string, string>
+) {
   const draft = await prisma.draft.findUnique({
     where: { id: draftId },
     include: {
@@ -146,7 +150,7 @@ async function approveDraft(draftId: string, userId: string) {
         await prisma.linkedProblem.createMany({
           data: data.linkedProblems.map((lp) => ({
             solvedProblemId: draft.solvedProblemId!,
-            linkedSolvedProblemId: lp.id,
+            linkedSolvedProblemId: renameMap?.get(lp.id) ?? lp.id,
             reason: lp.reason,
           })),
         });
@@ -262,13 +266,18 @@ async function approveDraft(draftId: string, userId: string) {
         linkedProblems: data.linkedProblems?.length
           ? {
               create: data.linkedProblems.map((lp) => ({
-                linkedSolvedProblemId: lp.id,
+                linkedSolvedProblemId: renameMap?.get(lp.id) ?? lp.id,
                 reason: lp.reason,
               })),
             }
           : undefined,
       },
     });
+  }
+
+  // Track this draft's rename for subsequent drafts in a batch
+  if (renameMap && data.newId && draft.solvedProblemId && data.newId !== draft.solvedProblemId) {
+    renameMap.set(draft.solvedProblemId, data.newId);
   }
 
   const updated = await prisma.draft.update({
@@ -373,12 +382,36 @@ export const draftsRouter = {
     .input(z.object({ ids: z.array(z.string().min(1)).min(1) }))
     .handler(async ({ input, context }) => {
       const userId = context.session.user.id;
-      let approved = 0;
-      for (const id of input.ids) {
-        await approveDraft(id, userId);
-        approved++;
+
+      // Load drafts to determine which ones are renames
+      const drafts = await prisma.draft.findMany({
+        where: { id: { in: input.ids } },
+      });
+      const renameIds = new Set<string>();
+      for (const draft of drafts) {
+        const parsed = proposedDataSchema.safeParse(draft.proposedData);
+        if (
+          parsed.success &&
+          parsed.data.newId &&
+          draft.solvedProblemId &&
+          parsed.data.newId !== draft.solvedProblemId
+        ) {
+          renameIds.add(draft.id);
+        }
       }
-      return { approved };
+
+      // Process rename drafts first so linked problem references stay valid
+      const sorted = [...input.ids].sort((a, b) => {
+        const aRename = renameIds.has(a) ? 0 : 1;
+        const bRename = renameIds.has(b) ? 0 : 1;
+        return aRename - bRename;
+      });
+
+      const renameMap = new Map<string, string>();
+      for (const id of sorted) {
+        await approveDraft(id, userId, renameMap);
+      }
+      return { approved: sorted.length };
     }),
 
   reject: protectedProcedure
