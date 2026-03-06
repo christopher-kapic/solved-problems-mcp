@@ -498,15 +498,21 @@ IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per reque
               orderBy: { version: "desc" },
               take: 1,
             },
-            linkedProblems: {
-              include: {
-                linkedSolvedProblem: {
-                  select: { id: true, name: true },
-                },
-              },
-            },
+            linkedProblems: true,
           },
         });
+
+        // Resolve linked problem targets (no FK, so manual lookup)
+        const allLinkedTargetIds = solvedProblems.flatMap((sp) =>
+          sp.linkedProblems.map((lp) => lp.linkedSolvedProblemId)
+        );
+        const resolvedTargets = allLinkedTargetIds.length > 0
+          ? await prisma.solvedProblem.findMany({
+              where: { id: { in: allLinkedTargetIds } },
+              select: { id: true, name: true },
+            })
+          : [];
+        const targetMap = new Map(resolvedTargets.map((t) => [t.id, t]));
 
         for (const sp of solvedProblems) {
           results.push({
@@ -525,10 +531,10 @@ IMPORTANT: To avoid exceeding output token limits, fetch at most 5 IDs per reque
               type: d.type,
             })),
             linkedProblems: sp.linkedProblems
-              .filter((lp) => accessibleIdSet.has(lp.linkedSolvedProblemId))
+              .filter((lp) => accessibleIdSet.has(lp.linkedSolvedProblemId) && targetMap.has(lp.linkedSolvedProblemId))
               .map((lp) => ({
-                id: lp.linkedSolvedProblem.id,
-                name: lp.linkedSolvedProblem.name,
+                id: lp.linkedSolvedProblemId,
+                name: targetMap.get(lp.linkedSolvedProblemId)!.name,
                 reason: lp.reason,
               })),
             latestVersion: sp.versions[0]

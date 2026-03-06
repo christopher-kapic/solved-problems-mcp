@@ -206,20 +206,7 @@ export const solvedProblemsRouter = {
           owner: {
             select: { id: true, name: true, email: true },
           },
-          linkedProblems: {
-            include: {
-              linkedSolvedProblem: {
-                select: { id: true, name: true, description: true },
-              },
-            },
-          },
-          linkedBy: {
-            include: {
-              solvedProblem: {
-                select: { id: true, name: true, description: true },
-              },
-            },
-          },
+          linkedProblems: true,
         },
       });
 
@@ -229,12 +216,27 @@ export const solvedProblemsRouter = {
         });
       }
 
-      // Check which linked problems are accessible to this user
+      // Query reverse links (linkedBy) separately since there's no FK relation
+      const linkedByRows = await prisma.linkedProblem.findMany({
+        where: { linkedSolvedProblemId: input.id },
+      });
+
+      // Resolve all linked problem targets
       const allLinkedIds = [
         ...solvedProblem.linkedProblems.map((lp) => lp.linkedSolvedProblemId),
-        ...solvedProblem.linkedBy.map((lp) => lp.solvedProblemId),
+        ...linkedByRows.map((lp) => lp.solvedProblemId),
       ];
 
+      const resolvedProblems = allLinkedIds.length > 0
+        ? await prisma.solvedProblem.findMany({
+            where: { id: { in: allLinkedIds } },
+            select: { id: true, name: true, description: true },
+          })
+        : [];
+
+      const resolvedMap = new Map(resolvedProblems.map((sp) => [sp.id, sp]));
+
+      // Check accessibility
       const accessibleLinked = allLinkedIds.length > 0
         ? await prisma.solvedProblem.findMany({
             where: {
@@ -251,20 +253,28 @@ export const solvedProblemsRouter = {
         ...solvedProblem,
         latestVersion: solvedProblem.versions[0] ?? null,
         tags: solvedProblem.tags.map((t) => t.tag),
-        linkedProblems: solvedProblem.linkedProblems.map((lp) => ({
-          id: lp.linkedSolvedProblem.id,
-          name: lp.linkedSolvedProblem.name,
-          description: lp.linkedSolvedProblem.description,
-          reason: lp.reason,
-          accessible: accessibleLinkedIds.has(lp.linkedSolvedProblemId),
-        })),
-        linkedBy: solvedProblem.linkedBy.map((lp) => ({
-          id: lp.solvedProblem.id,
-          name: lp.solvedProblem.name,
-          description: lp.solvedProblem.description,
-          reason: lp.reason,
-          accessible: accessibleLinkedIds.has(lp.solvedProblemId),
-        })),
+        linkedProblems: solvedProblem.linkedProblems.map((lp) => {
+          const target = resolvedMap.get(lp.linkedSolvedProblemId);
+          return {
+            id: lp.linkedSolvedProblemId,
+            name: target?.name ?? null,
+            description: target?.description ?? null,
+            reason: lp.reason,
+            accessible: accessibleLinkedIds.has(lp.linkedSolvedProblemId),
+            broken: !target,
+          };
+        }),
+        linkedBy: linkedByRows.map((lp) => {
+          const source = resolvedMap.get(lp.solvedProblemId);
+          return {
+            id: lp.solvedProblemId,
+            name: source?.name ?? null,
+            description: source?.description ?? null,
+            reason: lp.reason,
+            accessible: accessibleLinkedIds.has(lp.solvedProblemId),
+            broken: !source,
+          };
+        }),
       };
     }),
 
@@ -517,14 +527,10 @@ export const solvedProblemsRouter = {
           data: { resourceId: input.newId },
         });
 
-        // Update LinkedProblem references in both directions
+        // Update LinkedProblem references pointing TO this problem (no FK, just string match)
         await prisma.linkedProblem.updateMany({
           where: { linkedSolvedProblemId: input.id },
           data: { linkedSolvedProblemId: input.newId },
-        });
-        await prisma.linkedProblem.updateMany({
-          where: { solvedProblemId: input.id },
-          data: { solvedProblemId: input.newId },
         });
 
         finalId = input.newId;

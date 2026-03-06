@@ -274,7 +274,11 @@ export default function SolvedProblemDetailPage() {
                 <p className="text-xs font-medium text-muted-foreground">Links to</p>
                 {sp.linkedProblems.map((lp) => (
                   <div key={lp.id} className="flex items-center gap-2 text-xs">
-                    {lp.accessible ? (
+                    {lp.broken ? (
+                      <span className="font-medium text-destructive line-through" title="Target no longer exists">
+                        {lp.id}
+                      </span>
+                    ) : lp.accessible ? (
                       <Link
                         href={`/solved-problems/${lp.id}`}
                         className="font-medium text-primary hover:underline"
@@ -294,7 +298,11 @@ export default function SolvedProblemDetailPage() {
                 <p className="text-xs font-medium text-muted-foreground">Linked by</p>
                 {sp.linkedBy.map((lp) => (
                   <div key={lp.id} className="flex items-center gap-2 text-xs">
-                    {lp.accessible ? (
+                    {lp.broken ? (
+                      <span className="font-medium text-destructive line-through" title="Source no longer exists">
+                        {lp.id}
+                      </span>
+                    ) : lp.accessible ? (
                       <Link
                         href={`/solved-problems/${lp.id}`}
                         className="font-medium text-primary hover:underline"

@@ -22,7 +22,6 @@ model SolvedProblem {
   groupMemberships GroupMembership[]
   drafts       Draft[]
   linkedProblems  LinkedProblem[] @relation("linkedFrom")
-  linkedBy        LinkedProblem[] @relation("linkedTo")
 
   @@index([ownerId])
   @@map("solved_problem")
@@ -101,8 +100,7 @@ model LinkedProblem {
   id                    String        @id @default(cuid())
   solvedProblemId       String
   solvedProblem         SolvedProblem @relation("linkedFrom", fields: [solvedProblemId], references: [id], onDelete: Cascade)
-  linkedSolvedProblemId String
-  linkedSolvedProblem   SolvedProblem @relation("linkedTo", fields: [linkedSolvedProblemId], references: [id], onDelete: Cascade)
+  linkedSolvedProblemId String        // No FK — allows broken/dangling links
   reason                String
 
   @@unique([solvedProblemId, linkedSolvedProblemId])
